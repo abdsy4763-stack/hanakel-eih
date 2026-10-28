@@ -10,8 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let ingredientsList = [];
     let pantryList = Storage.get('pantry', ['ملح', 'فلفل أسود', 'زيت زيتون', 'زيت', 'سمن', 'سكر', 'كمون', 'كزبرة', 'بهارات']);
     let favoritesList = Storage.get('favorites', []);
-    let shoppingList = Storage.get('shopping', []); // Array of objects {name: "item", done: false}
-    let plannerDB = Storage.get('planner', {}); // { "فطور": recipeObj, "غداء": recipeObj... }
+    let shoppingList = Storage.get('shopping', []); 
+    let plannerDB = Storage.get('planner', {}); 
 
     // ==========================================
     // 2. التنقل بين التبويبات (Tabs)
@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('bg-primary', 'text-white', 'shadow');
             btn.classList.remove('text-gray-600');
             
-            // تحديث العرض عند فتح التبويب
             if (tabId === 'pantry') renderPantry();
             if (tabId === 'favorites') renderFavorites();
             if (tabId === 'shopping') renderShopping();
@@ -78,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTags();
     });
 
-    // خوارزمية البحث
+    // خوارزمية البحث المعدلة والذكية
     document.getElementById('generate-btn').addEventListener('click', async () => {
         if (ingredientsList.length === 0 && !ingredientInput.value.trim()) {
             showToast('الرجاء إضافة مكون واحد على الأقل للبحث!');
@@ -90,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsContainer.innerHTML = '<p class="text-center font-bold text-primary py-10"><i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i><br>جاري البحث في كتاب الوصفات...</p>';
 
         try {
-            // ملاحظة: تأكد من أن اسم الملف هنا يطابق اسم ملف قاعدة البيانات لديك
             const response = await fetch('./database_2.json'); 
             const recipesDB = await response.json();
 
@@ -98,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const diet = document.getElementById('dietary-select').value;
             const includePantry = document.getElementById('include-pantry').checked;
 
-            const searchTerms = includePantry ? [...ingredientsList, ...pantryList] : [...ingredientsList];
             let matches = [];
 
             recipesDB.forEach(recipe => {
@@ -106,31 +103,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 const matchDiet = diet === 'عام' || recipe.diet === diet;
 
                 if (matchCuisine && matchDiet) {
-                    let matchedCount = 0;
                     let missingIngredients = [];
+                    let userMatchCount = 0; // عداد يحسب فقط المكونات التي أدخلها المستخدم
 
                     recipe.ingredients.forEach(rIng => {
-                        const isFound = searchTerms.some(term => rIng.includes(term) || term.includes(rIng));
-                        if (isFound) matchedCount++;
-                        else missingIngredients.push(rIng);
+                        // 1. هل المكون المطلوب موجود ضمن ما أدخله المستخدم؟
+                        const matchesUser = ingredientsList.some(userIng => rIng.includes(userIng) || userIng.includes(rIng));
+                        
+                        // 2. هل المكون موجود في المخزن الدائم؟
+                        const matchesPantry = includePantry && pantryList.some(pantryIng => rIng.includes(pantryIng) || pantryIng.includes(rIng));
+
+                        if (matchesUser) {
+                            userMatchCount++; // نقطة قوية للوصفة
+                        } else if (!matchesPantry) {
+                            missingIngredients.push(rIng); // المكون ناقص
+                        }
                     });
 
-                    // التأكد من أن الوصفة تحتوي على الأقل على مكون واحد مما كتبه المستخدم يدوياً (وليس من المخزن فقط)
-                    const hasCoreIngredient = ingredientsList.some(userIng => recipe.ingredients.some(rIng => rIng.includes(userIng) || userIng.includes(rIng)));
-
-                    if (hasCoreIngredient) {
-                        const matchPercentage = (matchedCount / recipe.ingredients.length) * 100;
-                        matches.push({ ...recipe, matchPercentage, missingIngredients });
+                    // شرط صارم: يجب أن تحتوي الوصفة على مكون واحد على الأقل مما طلبه المستخدم
+                    if (userMatchCount > 0) {
+                        matches.push({ 
+                            ...recipe, 
+                            userMatchCount, 
+                            missingCount: missingIngredients.length,
+                            missingIngredients 
+                        });
                     }
                 }
             });
 
-            matches.sort((a, b) => b.matchPercentage - a.matchPercentage);
+            // خوارزمية الترتيب:
+            // 1. ترتيب تنازلي حسب عدد المكونات المتطابقة مع طلب المستخدم (الأولوية القصوى)
+            // 2. في حال التعادل، نعرض الوصفة التي تحتوي على نواقص أقل
+            matches.sort((a, b) => {
+                if (b.userMatchCount !== a.userMatchCount) {
+                    return b.userMatchCount - a.userMatchCount;
+                }
+                return a.missingCount - b.missingCount;
+            });
 
             if (matches.length === 0) {
-                resultsContainer.innerHTML = '<div class="bg-red-50 p-6 rounded-3xl border border-red-100 text-center text-red-600 font-bold">لم نجد وصفات دقيقة. جرب مكونات أخرى أو قلل الفلاتر.</div>';
+                resultsContainer.innerHTML = '<div class="bg-red-50 p-6 rounded-3xl border border-red-100 text-center text-red-600 font-bold">لم نجد وصفات تطابق مكوناتك. جرب مكونات أخرى!</div>';
             } else {
-                resultsContainer.innerHTML = '<h3 class="text-xl font-black text-gray-800 mb-4">أفضل النتائج:</h3>' + matches.slice(0, 10).map(recipe => renderRecipeCard(recipe)).join('');
+                resultsContainer.innerHTML = '<h3 class="text-xl font-black text-gray-800 mb-4">أفضل النتائج لمكوناتك:</h3>' + matches.slice(0, 10).map(recipe => renderRecipeCard(recipe)).join('');
             }
         } catch (error) {
             console.error(error);
@@ -138,7 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // تصميم بطاقة الوصفة 
     window.renderRecipeCard = (recipe) => {
         const isFav = favoritesList.some(f => f.id === recipe.id);
         const missingHtml = recipe.missingIngredients && recipe.missingIngredients.length > 0 
@@ -148,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
                </div>` 
             : '<div class="mt-3 text-sm text-green-700 bg-green-50 p-3 rounded-xl border border-green-100 font-bold"><i class="fa-solid fa-circle-check"></i> كل المكونات متوفرة لديك!</div>';
 
-        // تمرير كائن الوصفة كـ نص للوظائف باستخدام base64 لتجنب مشاكل علامات التنصيص
         const encodedRecipe = btoa(unescape(encodeURIComponent(JSON.stringify(recipe))));
 
         return `
@@ -160,10 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="flex gap-2 mb-4 mt-3">
                     <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-earth-americas"></i> ${recipe.cuisine}</span>
                     <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-leaf"></i> ${recipe.diet}</span>
+                    ${recipe.userMatchCount ? `<span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold border border-blue-100">تطابق ${recipe.userMatchCount} مكون أساسي</span>` : ''}
                 </div>
                 <p class="text-sm font-bold text-gray-800"><i class="fa-solid fa-carrot text-secondary"></i> المكونات:</p>
                 <p class="text-sm text-gray-600 mt-1">${recipe.ingredients.join('، ')}</p>
-                ${recipe.matchPercentage !== undefined ? missingHtml : ''}
+                ${missingHtml}
                 <p class="text-sm font-bold text-gray-800 mt-4"><i class="fa-solid fa-fire-burner text-secondary"></i> طريقة التحضير:</p>
                 <p class="text-sm text-gray-600 bg-gray-50 p-4 rounded-xl mt-2 leading-relaxed border border-gray-100">${recipe.instructions}</p>
                 
@@ -225,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         Storage.set('favorites', favoritesList);
         
-        // تحديث الواجهة فوراً
         if(document.getElementById('tab-favorites').classList.contains('active')) renderFavorites();
         else if (document.getElementById('recipes-results').innerHTML !== '') document.getElementById('generate-btn').click(); 
     };
@@ -278,9 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('plan-shop').addEventListener('click', () => {
         let allNeeded = [];
         Object.values(plannerDB).forEach(recipe => { allNeeded = allNeeded.concat(recipe.ingredients); });
-        // الفلترة: استخراج المكونات غير الموجودة في مخزن المنزل
+        
         let missing = allNeeded.filter(ing => !pantryList.some(p => ing.includes(p) || p.includes(ing)));
-        missing = [...new Set(missing)]; // إزالة التكرار
+        missing = [...new Set(missing)]; 
         
         if(missing.length > 0) {
             addToShopping(missing.join(','));
@@ -297,14 +310,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const items = itemsString.split(',');
         items.forEach(item => {
             const cleanItem = item.trim();
-            // التحقق من عدم وجود العنصر مسبقاً
             if (cleanItem && !shoppingList.some(i => i.name === cleanItem)) {
                 shoppingList.push({ name: cleanItem, done: false });
             }
         });
         Storage.set('shopping', shoppingList);
         updateShoppingBadge();
-        renderShopping(); // تحديث الواجهة إذا كان التبويب مفتوحاً
+        if(document.getElementById('tab-shopping').classList.contains('active')) renderShopping();
     };
 
     function renderShopping() {
@@ -342,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.removeShopping = (event, index) => { 
-        event.stopPropagation(); // منع تفعيل الـ toggle عند النقر على سلة الحذف
+        event.stopPropagation(); 
         shoppingList.splice(index, 1); 
         Storage.set('shopping', shoppingList); 
         renderShopping(); 
