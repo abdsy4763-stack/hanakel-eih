@@ -1,54 +1,66 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // -----------------------------------------
-    // 1. نظام التنقل بين التبويبات (Tabs)
-    // -----------------------------------------
+    // ==========================================
+    // 1. نظام التخزين المحلي (Local Storage)
+    // ==========================================
+    const Storage = {
+        get: (key, defaultVal) => JSON.parse(localStorage.getItem(key)) || defaultVal,
+        set: (key, val) => localStorage.setItem(key, JSON.stringify(val))
+    };
+
+    let ingredientsList = [];
+    let pantryList = Storage.get('pantry', ['ملح', 'فلفل أسود', 'زيت زيتون', 'زيت', 'سمن', 'سكر', 'كمون', 'كزبرة', 'بهارات']);
+    let favoritesList = Storage.get('favorites', []);
+    let shoppingList = Storage.get('shopping', []); // Array of objects {name: "item", done: false}
+    let plannerDB = Storage.get('planner', {}); // { "فطور": recipeObj, "غداء": recipeObj... }
+
+    // ==========================================
+    // 2. التنقل بين التبويبات (Tabs)
+    // ==========================================
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
 
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            // إخفاء كل التبويبات
             tabContents.forEach(tc => tc.classList.remove('active'));
             tabBtns.forEach(tb => {
                 tb.classList.remove('bg-primary', 'text-white', 'shadow');
                 tb.classList.add('text-gray-600');
             });
-
-            // إظهار التبويب المحدد
             const tabId = btn.getAttribute('data-tab');
             document.getElementById(`tab-${tabId}`).classList.add('active');
             btn.classList.add('bg-primary', 'text-white', 'shadow');
             btn.classList.remove('text-gray-600');
+            
+            // تحديث العرض عند فتح التبويب
+            if (tabId === 'pantry') renderPantry();
+            if (tabId === 'favorites') renderFavorites();
+            if (tabId === 'shopping') renderShopping();
+            if (tabId === 'planner') renderPlanner();
         });
     });
 
-    // -----------------------------------------
-    // 2. نظام إدخال المكونات (Tags)
-    // -----------------------------------------
-    let ingredientsList = [];
+    // ==========================================
+    // 3. التبويب الأول: البحث الذكي 
+    // ==========================================
     const ingredientInput = document.getElementById('ingredient-input');
-    const addIngredientBtn = document.getElementById('add-ingredient');
     const ingredientsTags = document.getElementById('ingredients-tags');
-    const clearIngredientsBtn = document.getElementById('clear-ingredients');
+
+    window.removeIngredient = (index) => {
+        ingredientsList.splice(index, 1);
+        renderTags();
+    };
 
     function renderTags() {
         ingredientsTags.innerHTML = '';
         ingredientsList.forEach((ing, index) => {
-            const tag = document.createElement('span');
-            tag.className = 'bg-white border border-gray-300 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm chip-enter';
-            tag.innerHTML = `${ing} <button class="text-red-500 hover:text-red-700" onclick="removeIngredient(${index})"><i class="fa-solid fa-xmark"></i></button>`;
-            ingredientsTags.appendChild(tag);
+            ingredientsTags.innerHTML += `
+                <span class="bg-white border border-gray-300 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm chip-enter">
+                    ${ing} <button class="text-red-500 hover:text-red-700" onclick="removeIngredient(${index})"><i class="fa-solid fa-xmark"></i></button>
+                </span>`;
         });
     }
 
-    // دالة متاحة عالمياً لحذف مكون
-    window.removeIngredient = function(index) {
-        ingredientsList.splice(index, 1);
-        renderTags();
-    }
-
-    // إضافة مكون عند الضغط على الزر
-    addIngredientBtn.addEventListener('click', () => {
+    document.getElementById('add-ingredient').addEventListener('click', () => {
         const val = ingredientInput.value.trim();
         if (val && !ingredientsList.includes(val)) {
             ingredientsList.push(val);
@@ -57,124 +69,323 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // إضافة مكون عند الضغط على مفتاح Enter
     ingredientInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addIngredientBtn.click();
+        if (e.key === 'Enter') document.getElementById('add-ingredient').click();
     });
 
-    // مسح كل المكونات
-    clearIngredientsBtn.addEventListener('click', () => {
+    document.getElementById('clear-ingredients').addEventListener('click', () => {
         ingredientsList = [];
         renderTags();
     });
 
-    // إظهار الإشعارات السريعة (Toast)
-    function showToast(msg) {
-        const toast = document.getElementById('toast');
-        toast.textContent = msg;
-        toast.style.opacity = '1';
-        setTimeout(() => { toast.style.opacity = '0'; }, 3000);
-    }
-
-    // -----------------------------------------
-    // 3. خوارزمية البحث في قاعدة البيانات المحلية
-    // -----------------------------------------
-    const generateBtn = document.getElementById('generate-btn');
-    const recipesResults = document.getElementById('recipes-results');
-    const cuisineSelect = document.getElementById('cuisine-select');
-    const dietarySelect = document.getElementById('dietary-select');
-
-    generateBtn.addEventListener('click', async () => {
-        // التحقق من وجود مكونات
-        if (ingredientsList.length === 0) {
-            if (ingredientInput.value.trim()) {
-                addIngredientBtn.click(); // إضافة المكتوب تلقائياً إن نسي المستخدم الضغط على إضافة
-            } else {
-                showToast('الرجاء إضافة مكون واحد على الأقل قبل البحث!');
-                return;
-            }
+    // خوارزمية البحث
+    document.getElementById('generate-btn').addEventListener('click', async () => {
+        if (ingredientsList.length === 0 && !ingredientInput.value.trim()) {
+            showToast('الرجاء إضافة مكون واحد على الأقل للبحث!');
+            return;
         }
+        if (ingredientInput.value.trim()) document.getElementById('add-ingredient').click();
 
-        // إظهار حالة التحميل
-        recipesResults.innerHTML = `
-            <div class="text-center p-10">
-                <i class="fa-solid fa-spinner fa-spin text-4xl text-primary mb-4"></i>
-                <p class="font-bold text-gray-600">جاري البحث في كتاب الوصفات...</p>
-            </div>`;
-        generateBtn.disabled = true;
+        const resultsContainer = document.getElementById('recipes-results');
+        resultsContainer.innerHTML = '<p class="text-center font-bold text-primary py-10"><i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i><br>جاري البحث في كتاب الوصفات...</p>';
 
         try {
-            // جلب البيانات من الملف المحلي
-            const response = await fetch('./database.json');
+            // ملاحظة: تأكد من أن اسم الملف هنا يطابق اسم ملف قاعدة البيانات لديك
+            const response = await fetch('./database_2.json'); 
             const recipesDB = await response.json();
 
-            const selectedCuisine = cuisineSelect.value;
-            const selectedDiet = dietarySelect.value;
-            let bestMatches = [];
+            const cuisine = document.getElementById('cuisine-select').value;
+            const diet = document.getElementById('dietary-select').value;
+            const includePantry = document.getElementById('include-pantry').checked;
 
-            // البحث وتقييم الوصفات
+            const searchTerms = includePantry ? [...ingredientsList, ...pantryList] : [...ingredientsList];
+            let matches = [];
+
             recipesDB.forEach(recipe => {
-                const matchCuisine = selectedCuisine === 'أي مطبخ' || recipe.cuisine === selectedCuisine;
-                const matchDiet = selectedDiet === 'عام' || recipe.diet === selectedDiet;
+                const matchCuisine = cuisine === 'أي مطبخ' || recipe.cuisine === cuisine;
+                const matchDiet = diet === 'عام' || recipe.diet === diet;
 
                 if (matchCuisine && matchDiet) {
-                    let score = 0;
-                    ingredientsList.forEach(userIng => {
-                        if (recipe.ingredients.some(recipeIng => recipeIng.includes(userIng))) {
-                            score++;
-                        }
+                    let matchedCount = 0;
+                    let missingIngredients = [];
+
+                    recipe.ingredients.forEach(rIng => {
+                        const isFound = searchTerms.some(term => rIng.includes(term) || term.includes(rIng));
+                        if (isFound) matchedCount++;
+                        else missingIngredients.push(rIng);
                     });
 
-                    // إذا تطابق مكون واحد على الأقل، نضيف الوصفة للنتائج
-                    if (score > 0) {
-                        bestMatches.push({ ...recipe, score });
+                    // التأكد من أن الوصفة تحتوي على الأقل على مكون واحد مما كتبه المستخدم يدوياً (وليس من المخزن فقط)
+                    const hasCoreIngredient = ingredientsList.some(userIng => recipe.ingredients.some(rIng => rIng.includes(userIng) || userIng.includes(rIng)));
+
+                    if (hasCoreIngredient) {
+                        const matchPercentage = (matchedCount / recipe.ingredients.length) * 100;
+                        matches.push({ ...recipe, matchPercentage, missingIngredients });
                     }
                 }
             });
 
-            // ترتيب الوصفات من الأفضل تطابقاً إلى الأقل
-            bestMatches.sort((a, b) => b.score - a.score);
+            matches.sort((a, b) => b.matchPercentage - a.matchPercentage);
 
-            // عرض النتائج
-            if (bestMatches.length === 0) {
-                recipesResults.innerHTML = `
-                    <div class="bg-red-50 p-6 rounded-3xl border border-red-100 text-center">
-                        <p class="text-red-600 font-bold">عذراً، لم نجد وصفة تطابق هذه المكونات مع خيارات المطبخ أو النظام الغذائي. جرب تغيير الفلاتر!</p>
-                    </div>`;
+            if (matches.length === 0) {
+                resultsContainer.innerHTML = '<div class="bg-red-50 p-6 rounded-3xl border border-red-100 text-center text-red-600 font-bold">لم نجد وصفات دقيقة. جرب مكونات أخرى أو قلل الفلاتر.</div>';
             } else {
-                // سنعرض أفضل 3 وصفات تطابقاً كحد أقصى
-                const topResults = bestMatches.slice(0, 3);
-                let resultsHTML = '<h3 class="text-xl font-black text-gray-800 mb-4">أفضل الوصفات المقترحة:</h3><div class="space-y-4">';
-                
-                topResults.forEach(match => {
-                    resultsHTML += `
-                        <div class="bg-white p-6 rounded-3xl shadow-md border border-orange-100 relative overflow-hidden">
-                            <h2 class="text-2xl font-black text-primary mb-2">${match.title}</h2>
-                            <p class="text-sm text-gray-500 mb-4">
-                                <span class="bg-orange-100 text-orange-800 px-3 py-1 rounded-lg text-xs font-bold mr-2"><i class="fa-solid fa-earth-americas"></i> ${match.cuisine}</span>
-                                <span class="bg-green-100 text-green-800 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-leaf"></i> ${match.diet}</span>
-                            </p>
-                            <h3 class="font-bold text-gray-800 mt-4 mb-2"><i class="fa-solid fa-carrot text-secondary"></i> المكونات:</h3>
-                            <ul class="list-disc list-inside text-gray-700 mb-4 text-sm space-y-1 font-medium">
-                                ${match.ingredients.map(ing => `<li>${ing}</li>`).join('')}
-                            </ul>
-                            <h3 class="font-bold text-gray-800 mb-2"><i class="fa-solid fa-fire-burner text-secondary"></i> طريقة التحضير:</h3>
-                            <p class="text-gray-600 text-sm leading-relaxed font-medium bg-gray-50 p-4 rounded-xl border border-gray-100">${match.instructions}</p>
-                        </div>
-                    `;
-                });
-                resultsHTML += '</div>';
-                recipesResults.innerHTML = resultsHTML;
+                resultsContainer.innerHTML = '<h3 class="text-xl font-black text-gray-800 mb-4">أفضل النتائج:</h3>' + matches.slice(0, 10).map(recipe => renderRecipeCard(recipe)).join('');
             }
-
         } catch (error) {
-            console.error("Database Error:", error);
-            recipesResults.innerHTML = `
-                <div class="bg-red-50 p-6 rounded-3xl border border-red-100 text-center">
-                    <p class="text-red-600 font-bold">حدث خطأ. يرجى التأكد من وجود ملف database.json في نفس المجلد.</p>
-                </div>`;
-        } finally {
-            generateBtn.disabled = false; // إعادة تفعيل الزر
+            console.error(error);
+            resultsContainer.innerHTML = '<p class="text-red-500 text-center font-bold">حدث خطأ في قراءة قاعدة البيانات.</p>';
         }
     });
+
+    // تصميم بطاقة الوصفة 
+    window.renderRecipeCard = (recipe) => {
+        const isFav = favoritesList.some(f => f.id === recipe.id);
+        const missingHtml = recipe.missingIngredients && recipe.missingIngredients.length > 0 
+            ? `<div class="mt-3 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 font-bold flex items-center justify-between flex-wrap gap-2">
+                 <span><i class="fa-solid fa-circle-exclamation"></i> نواقص: ${recipe.missingIngredients.join('، ')}</span>
+                 <button onclick="addToShopping('${recipe.missingIngredients.join(',')}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition text-xs shadow-sm">أضف للناقص <i class="fa-solid fa-plus"></i></button>
+               </div>` 
+            : '<div class="mt-3 text-sm text-green-700 bg-green-50 p-3 rounded-xl border border-green-100 font-bold"><i class="fa-solid fa-circle-check"></i> كل المكونات متوفرة لديك!</div>';
+
+        // تمرير كائن الوصفة كـ نص للوظائف باستخدام base64 لتجنب مشاكل علامات التنصيص
+        const encodedRecipe = btoa(unescape(encodeURIComponent(JSON.stringify(recipe))));
+
+        return `
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-4 relative hover:shadow-md transition">
+                <button onclick="toggleFavorite('${encodedRecipe}')" class="absolute top-6 left-6 text-2xl transition ${isFav ? 'text-red-500 hover:text-red-600' : 'text-gray-300 hover:text-red-400'}">
+                    <i class="fa-solid fa-heart"></i>
+                </button>
+                <h2 class="text-2xl font-black text-primary mb-2 pr-2 border-r-4 border-primary">${recipe.title}</h2>
+                <div class="flex gap-2 mb-4 mt-3">
+                    <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-earth-americas"></i> ${recipe.cuisine}</span>
+                    <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-leaf"></i> ${recipe.diet}</span>
+                </div>
+                <p class="text-sm font-bold text-gray-800"><i class="fa-solid fa-carrot text-secondary"></i> المكونات:</p>
+                <p class="text-sm text-gray-600 mt-1">${recipe.ingredients.join('، ')}</p>
+                ${recipe.matchPercentage !== undefined ? missingHtml : ''}
+                <p class="text-sm font-bold text-gray-800 mt-4"><i class="fa-solid fa-fire-burner text-secondary"></i> طريقة التحضير:</p>
+                <p class="text-sm text-gray-600 bg-gray-50 p-4 rounded-xl mt-2 leading-relaxed border border-gray-100">${recipe.instructions}</p>
+                
+                <div class="mt-5 pt-4 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-bold text-gray-500">أضف إلى الخطة:</span>
+                    <button onclick="addToPlanner('${encodedRecipe}', 'فطور')" class="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-100 font-bold transition">فطور</button>
+                    <button onclick="addToPlanner('${encodedRecipe}', 'غداء')" class="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-100 font-bold transition">غداء</button>
+                    <button onclick="addToPlanner('${encodedRecipe}', 'عشاء')" class="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-100 font-bold transition">عشاء</button>
+                </div>
+            </div>`;
+    };
+
+    // ==========================================
+    // 4. التبويب الثاني: مخزن المنزل (Pantry)
+    // ==========================================
+    const pantryInput = document.getElementById('pantry-input');
+    const pantryListContainer = document.getElementById('pantry-list');
+
+    function renderPantry() {
+        pantryListContainer.innerHTML = '';
+        pantryList.forEach((item, index) => {
+            pantryListContainer.innerHTML += `
+                <span class="bg-white border border-gray-300 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm">
+                    ${item} <button class="text-red-500 hover:text-red-700" onclick="removePantry(${index})"><i class="fa-solid fa-xmark"></i></button>
+                </span>`;
+        });
+        Storage.set('pantry', pantryList);
+    }
+
+    document.getElementById('add-pantry').addEventListener('click', () => {
+        const val = pantryInput.value.trim();
+        if (val && !pantryList.includes(val)) {
+            pantryList.push(val);
+            pantryInput.value = '';
+            renderPantry();
+        }
+    });
+    
+    pantryInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('add-pantry').click(); });
+    window.removePantry = (index) => { pantryList.splice(index, 1); renderPantry(); };
+    document.getElementById('pantry-clear').addEventListener('click', () => { pantryList = []; renderPantry(); });
+    document.getElementById('pantry-reset').addEventListener('click', () => { 
+        pantryList = ['ملح', 'فلفل أسود', 'زيت زيتون', 'زيت', 'سمن', 'سكر', 'كمون', 'كزبرة', 'بهارات']; 
+        renderPantry(); 
+    });
+
+    // ==========================================
+    // 5. التبويب الرابع: المفضلة (Favorites)
+    // ==========================================
+    window.toggleFavorite = (encodedRecipe) => {
+        const recipe = JSON.parse(decodeURIComponent(escape(atob(encodedRecipe))));
+        const index = favoritesList.findIndex(f => f.id === recipe.id);
+        if (index > -1) {
+            favoritesList.splice(index, 1);
+            showToast('تم الحذف من المفضلة 💔');
+        } else {
+            favoritesList.push(recipe);
+            showToast('تمت الإضافة للمفضلة ❤️');
+        }
+        Storage.set('favorites', favoritesList);
+        
+        // تحديث الواجهة فوراً
+        if(document.getElementById('tab-favorites').classList.contains('active')) renderFavorites();
+        else if (document.getElementById('recipes-results').innerHTML !== '') document.getElementById('generate-btn').click(); 
+    };
+
+    function renderFavorites() {
+        const container = document.getElementById('favorites-list');
+        document.getElementById('fav-count').innerText = `${favoritesList.length} وصفة`;
+        if(favoritesList.length === 0) container.innerHTML = '<div class="text-center py-10 text-gray-400 font-bold"><i class="fa-regular fa-heart text-4xl mb-3"></i><br>لا توجد وصفات مفضلة بعد.</div>';
+        else container.innerHTML = favoritesList.map(r => renderRecipeCard(r)).join('');
+    }
+
+    // ==========================================
+    // 6. التبويب الثالث: خطة الأسبوع (Planner)
+    // ==========================================
+    window.addToPlanner = (encodedRecipe, mealType) => {
+        const recipe = JSON.parse(decodeURIComponent(escape(atob(encodedRecipe))));
+        plannerDB[mealType] = recipe;
+        Storage.set('planner', plannerDB);
+        showToast(`تم إضافة الوصفة كـ ${mealType} بنجاح 🗓️`);
+    };
+
+    function renderPlanner() {
+        const container = document.getElementById('planner-grid');
+        const meals = ['فطور', 'غداء', 'عشاء'];
+        container.innerHTML = '';
+        
+        meals.forEach(meal => {
+            const recipe = plannerDB[meal];
+            container.innerHTML += `
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h4 class="font-black text-primary text-lg mb-1">${meal}</h4>
+                        ${recipe ? `<p class="font-bold text-gray-800">${recipe.title}</p>
+                                    <p class="text-xs text-gray-500 mt-1">المكونات: ${recipe.ingredients.join('، ')}</p>` 
+                                 : `<p class="text-sm text-gray-400 italic">لم يتم تحديد وصفة لهذه الوجبة بعد</p>`}
+                    </div>
+                    ${recipe ? `<button onclick="removeFromPlanner('${meal}')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition no-print">إزالة</button>` : ''}
+                </div>`;
+        });
+    }
+    
+    window.removeFromPlanner = (meal) => { delete plannerDB[meal]; Storage.set('planner', plannerDB); renderPlanner(); };
+    
+    document.getElementById('plan-clear').addEventListener('click', () => { 
+        if(confirm('هل أنت متأكد من مسح الخطة بالكامل؟')){ plannerDB = {}; Storage.set('planner', plannerDB); renderPlanner(); }
+    });
+    
+    document.getElementById('plan-print').addEventListener('click', () => { window.print(); });
+
+    document.getElementById('plan-shop').addEventListener('click', () => {
+        let allNeeded = [];
+        Object.values(plannerDB).forEach(recipe => { allNeeded = allNeeded.concat(recipe.ingredients); });
+        // الفلترة: استخراج المكونات غير الموجودة في مخزن المنزل
+        let missing = allNeeded.filter(ing => !pantryList.some(p => ing.includes(p) || p.includes(ing)));
+        missing = [...new Set(missing)]; // إزالة التكرار
+        
+        if(missing.length > 0) {
+            addToShopping(missing.join(','));
+            showToast('تمت إضافة النواقص لقائمة التسوق 🛒');
+        } else {
+            showToast('جميع مكونات الخطة متوفرة في مخزنك! 🎉');
+        }
+    });
+
+    // ==========================================
+    // 7. التبويب الخامس: قائمة التسوق 
+    // ==========================================
+    window.addToShopping = (itemsString) => {
+        const items = itemsString.split(',');
+        items.forEach(item => {
+            const cleanItem = item.trim();
+            // التحقق من عدم وجود العنصر مسبقاً
+            if (cleanItem && !shoppingList.some(i => i.name === cleanItem)) {
+                shoppingList.push({ name: cleanItem, done: false });
+            }
+        });
+        Storage.set('shopping', shoppingList);
+        updateShoppingBadge();
+        renderShopping(); // تحديث الواجهة إذا كان التبويب مفتوحاً
+    };
+
+    function renderShopping() {
+        const list = document.getElementById('shopping-list');
+        list.innerHTML = '';
+        if(shoppingList.length === 0){
+            list.innerHTML = '<div class="text-center py-8 text-gray-400 font-bold">القائمة فارغة. كل شيء جاهز!</div>';
+        } else {
+            shoppingList.forEach((item, index) => {
+                const textClass = item.done ? 'line-through-custom text-gray-400' : 'text-gray-800';
+                list.innerHTML += `
+                    <li class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200 mb-2 transition hover:bg-gray-100 cursor-pointer" onclick="toggleShopItem(${index})">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" ${item.done ? 'checked' : ''} class="w-5 h-5 accent-primary cursor-pointer pointer-events-none">
+                            <span class="font-bold ${textClass}">${item.name}</span>
+                        </div>
+                        <button onclick="removeShopping(event, ${index})" class="text-red-400 hover:text-red-600 bg-white p-2 rounded-lg shadow-sm border"><i class="fa-solid fa-trash"></i></button>
+                    </li>`;
+            });
+        }
+        updateShoppingBadge();
+    }
+
+    document.getElementById('add-shop').addEventListener('click', () => {
+        const val = document.getElementById('shop-input').value;
+        if (val) { addToShopping(val); document.getElementById('shop-input').value = ''; }
+    });
+    
+    document.getElementById('shop-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('add-shop').click(); });
+
+    window.toggleShopItem = (index) => {
+        shoppingList[index].done = !shoppingList[index].done;
+        Storage.set('shopping', shoppingList);
+        renderShopping();
+    };
+
+    window.removeShopping = (event, index) => { 
+        event.stopPropagation(); // منع تفعيل الـ toggle عند النقر على سلة الحذف
+        shoppingList.splice(index, 1); 
+        Storage.set('shopping', shoppingList); 
+        renderShopping(); 
+    };
+    
+    document.getElementById('shop-clear').addEventListener('click', () => { 
+        if(confirm('مسح كل القائمة؟')) { shoppingList = []; Storage.set('shopping', shoppingList); renderShopping(); }
+    });
+    
+    document.getElementById('shop-clear-done').addEventListener('click', () => { 
+        shoppingList = shoppingList.filter(item => !item.done);
+        Storage.set('shopping', shoppingList); 
+        renderShopping(); 
+    });
+
+    document.getElementById('shop-copy').addEventListener('click', () => {
+        const textToCopy = shoppingList.map(i => (i.done ? '[x] ' : '[ ] ') + i.name).join('\n');
+        if(textToCopy){
+            navigator.clipboard.writeText("قائمة المشتريات:\n" + textToCopy).then(() => showToast('تم نسخ القائمة 📋'));
+        }
+    });
+
+    function updateShoppingBadge() {
+        const badge = document.getElementById('shopping-badge');
+        const unboughtCount = shoppingList.filter(i => !i.done).length;
+        badge.innerText = unboughtCount;
+        if(unboughtCount > 0) badge.classList.remove('hidden');
+        else badge.classList.add('hidden');
+    }
+
+    // ==========================================
+    // 8. إشعارات منبثقة (Toast)
+    // ==========================================
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.style.opacity = '1';
+        toast.style.transform = 'translate(-50%, -10px)';
+        setTimeout(() => { 
+            toast.style.opacity = '0'; 
+            toast.style.transform = 'translate(-50%, 0)';
+        }, 3000);
+    }
+    
+    updateShoppingBadge(); 
 });
