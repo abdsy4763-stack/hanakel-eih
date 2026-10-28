@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f97316">
+    <title>هناكل إيه - مساعد الطهي الذكي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script>
+        if (window.tailwind) tailwind.config = {
+            theme: { extend: {
+                fontFamily: { cairo: ['Cairo', 'sans-serif'] },
+                colors: { primary: '#f97316', secondary: '#ea580c', darkBg: '#f8fafc' }
+            } }
+        };
+    </script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .chip-enter { animation: pop .15s ease-out; }
+        @keyframes pop { from { transform: scale(.85); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #f97316; outline-offset: 2px; }
+        @media print { header, #toast, .no-print, .tab-btn { display: none !important; } }
+        .line-through-custom { text-decoration: line-through; opacity: 0.6; }
+    </style>
+</head>
+<body class="bg-darkBg text-gray-800 min-h-screen flex flex-col justify-between">
+
+    <header class="bg-white shadow-md sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
+            <div class="flex items-center gap-2">
+                <div class="bg-primary text-white p-2 rounded-xl shadow-lg"><i class="fa-solid fa-utensils text-xl"></i></div>
+                <h1 class="text-2xl font-black text-primary tracking-wide">هناكل إيه؟</h1>
+            </div>
+            <nav class="flex flex-wrap gap-1 justify-center bg-gray-100 p-1.5 rounded-2xl" role="tablist" aria-label="التبويبات">
+                <button type="button" role="tab" aria-selected="true" aria-controls="tab-ai" data-tab="ai" id="btn-ai" class="tab-btn px-4 py-2 rounded-xl font-bold text-sm transition-all bg-primary text-white shadow"><i class="fa-solid fa-magnifying-glass ml-1"></i> البحث عن وصفة</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="tab-pantry" data-tab="pantry" id="btn-pantry" class="tab-btn px-4 py-2 rounded-xl font-bold text-sm transition-all text-gray-600 hover:text-primary"><i class="fa-solid fa-box-archive ml-1"></i> مخزن المنزل</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="tab-planner" data-tab="planner" id="btn-planner" class="tab-btn px-4 py-2 rounded-xl font-bold text-sm transition-all text-gray-600 hover:text-primary"><i class="fa-solid fa-calendar-days ml-1"></i> خطة الوجبات</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="tab-favorites" data-tab="favorites" id="btn-favorites" class="tab-btn px-4 py-2 rounded-xl font-bold text-sm transition-all text-gray-600 hover:text-primary"><i class="fa-solid fa-heart ml-1"></i> المفضلة</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="tab-shopping" data-tab="shopping" id="btn-shopping" class="tab-btn px-4 py-2 rounded-xl font-bold text-sm transition-all text-gray-600 hover:text-primary relative"><i class="fa-solid fa-basket-shopping ml-1"></i> قائمة الناقص
+                    <span id="shopping-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold hidden">0</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6 flex-grow max-w-5xl">
+
+        <!-- TAB 1: Search -->
+        <div id="tab-ai" role="tabpanel" class="tab-content active space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-xl border border-orange-100">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-basket-shopping text-primary"></i> إيه المتوفر عندك النهاردة؟</h2>
+                    <button id="clear-ingredients" class="text-xs text-red-500 hover:underline font-semibold">مسح الكل</button>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="ingredient-input" maxlength="40" autocomplete="off" placeholder="مثال: بطاطا، دجاج، بصل"
+                           class="flex-grow min-w-0 border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary shadow-inner">
+                    <button id="add-ingredient" class="bg-primary hover:bg-secondary text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-md flex items-center gap-2"><i class="fa-solid fa-plus"></i> إضافة</button>
+                </div>
+                <div id="ingredients-tags" class="flex flex-wrap gap-2 min-h-[50px] p-3 bg-gray-50 rounded-2xl border border-dashed border-gray-300 mb-4"></div>
+
+                <div class="flex items-center gap-2 mb-6 bg-orange-50 p-3 rounded-xl border border-orange-200">
+                    <input type="checkbox" id="include-pantry" checked class="w-5 h-5 accent-orange-500 cursor-pointer">
+                    <label for="include-pantry" class="text-sm font-semibold text-gray-700 cursor-pointer">📦 تضمين مواد مخزن المنزل الدائمة تلقائياً في البحث (الملح، الزيت، البهارات...)</label>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label for="cuisine-select" class="block text-sm font-bold text-gray-700 mb-2">🌐 المطبخ / البلد المفضّل:</label>
+                        <select id="cuisine-select" class="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-medium text-sm">
+                            <option value="أي مطبخ">جميع المطابخ</option>
+                            <option value="سوري">سوري 🇸🇾</option>
+                            <option value="تركي">تركي 🇹🇷</option>
+                            <option value="مصري">مصري 🇪🇬</option>
+                            <option value="إسباني">إسباني 🇪🇸</option>
+                            <option value="خليجي">خليجي 🇸🇦</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="dietary-select" class="block text-sm font-bold text-gray-700 mb-2">🥗 النظام الغذائي:</label>
+                        <select id="dietary-select" class="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-medium text-sm">
+                            <option value="عام">عام (بدون نظام محدد)</option>
+                            <option value="نظام الكيتو">نظام الكيتو (Keto)</option>
+                            <option value="نظام الطيبات">نظام الطيبات</option>
+                            <option value="نظام نباتي">نظام نباتي (Vegetarian)</option>
+                            <option value="عالي البروتين">عالي البروتين (High Protein)</option>
+                            <option value="صحي خفيف">صحي خفيف (Light &amp; Healthy)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="w-full bg-gradient-to-r from-primary to-secondary text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait">
+                    <i class="fa-solid fa-book-open"></i> <span>ابحث في كتاب الوصفات الآن!</span>
+                </button>
+            </div>
+            <div id="recipes-results" class="space-y-6" aria-live="polite"></div>
+        </div>
+
+        <!-- TAB 2: Pantry -->
+        <div id="tab-pantry" role="tabpanel" class="tab-content space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-xl">
+                <h2 class="text-2xl font-black text-gray-800 mb-1 flex items-center gap-2"><i class="fa-solid fa-box-archive text-primary"></i> مخزن المنزل الدائم</h2>
+                <p class="text-sm text-gray-500 mb-4">المواد الموجودة دائماً عندك. تُضاف تلقائياً للبحث ولا تظهر في قائمة الناقص.</p>
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="pantry-input" maxlength="40" autocomplete="off" placeholder="مثال: رز، سكر، معكرونة..."
+                           class="flex-grow min-w-0 border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <button id="add-pantry" class="bg-primary hover:bg-secondary text-white px-6 py-3 rounded-2xl font-bold shadow-md"><i class="fa-solid fa-plus"></i> إضافة</button>
+                </div>
+                <div id="pantry-list" class="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-2xl border border-dashed border-gray-300 min-h-[50px]"></div>
+                <div class="mt-4 flex gap-3 text-xs">
+                    <button id="pantry-reset" class="text-gray-500 hover:underline font-semibold">استعادة القائمة الافتراضية</button>
+                    <button id="pantry-clear" class="text-red-500 hover:underline font-semibold">مسح الكل</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Planner -->
+        <div id="tab-planner" role="tabpanel" class="tab-content space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-xl">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h2 class="text-2xl font-black text-gray-800 flex items-center gap-2"><i class="fa-solid fa-calendar-days text-primary"></i> خطة الوجبات</h2>
+                    <div class="flex gap-3 text-xs no-print">
+                        <button id="plan-shop" class="bg-orange-50 text-primary border border-orange-200 px-3 py-2 rounded-xl font-bold hover:bg-orange-100 transition">🛒 أضف النواقص للقائمة</button>
+                        <button id="plan-print" class="text-gray-500 hover:underline font-semibold border px-3 py-2 rounded-xl">طباعة</button>
+                        <button id="plan-clear" class="text-red-500 hover:underline font-semibold border border-red-100 px-3 py-2 rounded-xl">مسح الخطة</button>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-500 mb-4 no-print">قم بالبحث عن المكونات أولاً، ومن نتائج البحث أو المفضلة يمكنك إضافة الوصفة لتكون فطور، غداء، أو عشاء.</p>
+                <div id="planner-grid" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <!-- TAB 4: Favorites -->
+        <div id="tab-favorites" role="tabpanel" class="tab-content space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-black text-gray-800 flex items-center gap-2"><i class="fa-solid fa-heart text-red-500"></i> وصفاتي المفضلة</h2>
+                <span id="fav-count" class="text-sm text-gray-500 font-bold bg-white px-3 py-1 rounded-full shadow-sm">0 وصفة</span>
+            </div>
+            <div id="favorites-list" class="space-y-6"></div>
+        </div>
+
+        <!-- TAB 5: Shopping -->
+        <div id="tab-shopping" role="tabpanel" class="tab-content space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-xl">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h2 class="text-2xl font-black text-gray-800 flex items-center gap-2"><i class="fa-solid fa-basket-shopping text-primary"></i> قائمة الناقص</h2>
+                    <div class="flex gap-3 text-xs no-print">
+                        <button id="shop-copy" class="text-primary hover:underline font-semibold border px-3 py-2 rounded-xl">نسخ القائمة</button>
+                        <button id="shop-clear-done" class="text-gray-500 hover:underline font-semibold border px-3 py-2 rounded-xl">حذف المشتراة</button>
+                        <button id="shop-clear" class="text-red-500 hover:underline font-semibold border border-red-100 px-3 py-2 rounded-xl">مسح الكل</button>
+                    </div>
+                </div>
+                <div class="flex gap-2 mb-4 no-print">
+                    <input type="text" id="shop-input" maxlength="60" autocomplete="off" placeholder="أضف غرضاً يدوياً..."
+                           class="flex-grow min-w-0 border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <button id="add-shop" class="bg-primary hover:bg-secondary text-white px-6 py-3 rounded-2xl font-bold shadow-md"><i class="fa-solid fa-plus"></i> إضافة</button>
+                </div>
+                <ul id="shopping-list" class="space-y-2"></ul>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center text-xs text-gray-400 py-4 no-print border-t mt-4">هناكل إيه؟ — يتم جلب الوصفات من قاعدة البيانات المحلية المخصصة.</footer>
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-5 py-3 rounded-2xl shadow-2xl opacity-0 pointer-events-none transition-opacity z-50" role="status"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
